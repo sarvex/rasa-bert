@@ -31,14 +31,14 @@ flags = tf.flags
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("input_file", None, "")
+flags.DEFINE_string("input_file", 'test.txt', "")
 
-flags.DEFINE_string("output_file", None, "")
+flags.DEFINE_string("output_file", 'output.json', "")
 
-flags.DEFINE_string("layers", "-1,-2,-3,-4", "")
+flags.DEFINE_string("layers", "-2", "")
 
 flags.DEFINE_string(
-    "bert_config_file", None,
+    "bert_config_file", '/Users/oakela/Documents/RASA/bert/uncased_L-24_H-1024_A-16/bert_config.json',
     "The config json file corresponding to the pre-trained BERT model. "
     "This specifies the model architecture.")
 
@@ -49,10 +49,10 @@ flags.DEFINE_integer(
     "than this will be padded.")
 
 flags.DEFINE_string(
-    "init_checkpoint", None,
+    "init_checkpoint", '/Users/oakela/Documents/RASA/bert/uncased_L-24_H-1024_A-16/bert_model.ckpt.index',
     "Initial checkpoint (usually from a pre-trained BERT model).")
 
-flags.DEFINE_string("vocab_file", None,
+flags.DEFINE_string("vocab_file", '/Users/oakela/Documents/RASA/bert/uncased_L-24_H-1024_A-16/vocab.txt',
                     "The vocabulary file that the BERT model was trained on.")
 
 flags.DEFINE_bool(
@@ -60,7 +60,7 @@ flags.DEFINE_bool(
     "Whether to lower case the input text. Should be True for uncased "
     "models and False for cased models.")
 
-flags.DEFINE_integer("batch_size", 32, "Batch size for predictions.")
+flags.DEFINE_integer("batch_size", 8, "Batch size for predictions.")
 
 flags.DEFINE_bool("use_tpu", False, "Whether to use TPU or GPU/CPU.")
 
@@ -340,7 +340,68 @@ def read_examples(input_file):
   return examples
 
 
-def main(_):
+def read_array_examples(array_example):
+    examples = []
+    unique_id = 0
+
+    for l in array_example:
+        line = tokenization.convert_to_unicode(l)
+        line = line.strip()
+        text_a = None
+        text_b = None
+        m = re.match(r"^(.*) \|\|\| (.*)$", line)
+        if m is None:
+            text_a = line
+        else:
+            text_a = m.group(1)
+            text_b = m.group(2)
+        examples.append(
+          InputExample(unique_id=unique_id, text_a=text_a, text_b=text_b))
+        unique_id += 1
+    return examples
+
+
+def create_features(examples_array, estimator, tokenizer, layer_indexes):
+    examples = read_array_examples(examples_array)
+
+    features = convert_examples_to_features(
+        examples=examples, seq_length=128, tokenizer=tokenizer)
+
+    unique_id_to_feature = {}
+    for feature in features:
+        unique_id_to_feature[feature.unique_id] = feature
+
+    input_fn = input_fn_builder(
+     features=features, seq_length=128)
+
+    results = []
+    for result in estimator.predict(input_fn, yield_single_examples=True):
+      unique_id = int(result["unique_id"])
+      feature = unique_id_to_feature[unique_id]
+      output_json = collections.OrderedDict()
+      output_json["linex_index"] = unique_id
+      all_features = []
+      for (i, token) in enumerate(feature.tokens):
+        all_layers = []
+        for (j, layer_index) in enumerate(layer_indexes):
+          layer_output = result["layer_output_%d" % j]
+          layers = collections.OrderedDict()
+          layers["index"] = layer_index
+          layers["values"] = [
+              round(float(x), 6) for x in layer_output[i:(i + 1)].flat
+          ]
+          all_layers.append(layers)
+        features = collections.OrderedDict()
+        features["token"] = token
+        features["layers"] = all_layers
+        all_features.append(features)
+      output_json["features"] = all_features
+      # writer.write(json.dumps(output_json) + "\n")
+      results.append(output_json)
+    return results
+
+
+def main(examples_array):
   tf.logging.set_verbosity(tf.logging.INFO)
 
   layer_indexes = [int(x) for x in FLAGS.layers.split(",")]
@@ -357,7 +418,7 @@ def main(_):
           num_shards=FLAGS.num_tpu_cores,
           per_host_input_for_training=is_per_host))
 
-  examples = read_examples(FLAGS.input_file)
+  examples = read_array_examples(examples_array)
 
   features = convert_examples_to_features(
       examples=examples, seq_length=FLAGS.max_seq_length, tokenizer=tokenizer)
@@ -386,6 +447,7 @@ def main(_):
 
   with codecs.getwriter("utf-8")(tf.gfile.Open(FLAGS.output_file,
                                                "w")) as writer:
+    results = []
     for result in estimator.predict(input_fn, yield_single_examples=True):
       unique_id = int(result["unique_id"])
       feature = unique_id_to_feature[unique_id]
@@ -407,8 +469,9 @@ def main(_):
         features["layers"] = all_layers
         all_features.append(features)
       output_json["features"] = all_features
-      writer.write(json.dumps(output_json) + "\n")
-
+      # writer.write(json.dumps(output_json) + "\n")
+      results.append(output_json)
+    return results
 
 if __name__ == "__main__":
   flags.mark_flag_as_required("input_file")
