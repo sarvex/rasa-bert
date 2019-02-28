@@ -374,7 +374,7 @@ def create_features(examples_array, estimator, tokenizer, layer_indexes):
     input_fn = input_fn_builder(
      features=features, seq_length=128)
 
-    if type(examples_array) is list:
+    if len(examples_array) > 1:
         save_hook = tf.train.CheckpointSaverHook('/tmp/bert_model', save_secs=1)
         predictions = estimator.predict(input_fn,
                                         hooks=[save_hook],
