@@ -377,7 +377,7 @@ def create_features(examples_array, estimator, tokenizer, layer_indexes):
     if type(examples_array) is list:
         save_hook = tf.train.CheckpointSaverHook('/tmp/bert_model', save_secs=1)
         predictions = estimator.predict(input_fn, hooks=[save_hook], yield_single_examples=True)
-        estimator.export_savedmovel('/tmp/bert_model', input_fn, strip_default_attrs=True)
+        estimator.export_savedmodel('/tmp/bert_model', input_fn, strip_default_attrs=True)
     else:
         predictions = estimator.predict(input_fn, yield_single_examples=True)
 
