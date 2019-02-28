@@ -374,8 +374,16 @@ def create_features(examples_array, estimator, tokenizer, layer_indexes):
     input_fn = input_fn_builder(
      features=features, seq_length=128)
 
+    if type(examples_array) is list:
+        save_hook = tf.train.CheckpointSaverHook('/tmp/bert_model', save_secs=1)
+        predictions = estimator.predict(input_fn, hooks=[save_hook], yield_single_examples=True)
+        estimator.export_savedmovel('/tmp/bert_model', input_fn, strip_default_attrs=True)
+    else:
+        predictions = estimator.predict(input_fn, yield_single_examples=True)
+
     results = []
-    for result in estimator.predict(input_fn, yield_single_examples=True):
+
+    for result in predictions:
       unique_id = int(result["unique_id"])
       feature = unique_id_to_feature[unique_id]
       output_json = collections.OrderedDict()
