@@ -6,7 +6,7 @@ setup(
     packages=[],
     url='',
     license='',
-    author='',
+    author='Google LLC',
     author_email='',
-    description=''
+    description="Forked repo from Google's original BERT github repo found at https://github.com/google-research/bert"
 )
